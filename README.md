@@ -142,11 +142,15 @@ g++ -o testComm.exe  main_test_commSpeed.cpp  serial.cpp  amBasic.cpp  -lstdc++
 １秒おきに，ダイナミクセルの現在角度や，１００回の通信にかかった時間などが表示されると思います．
 
 ここまでうまくできていれば，以下のような結果が出てくると思います．
-ダイナミクセルのシャフト角度が左右に周期的に行ったり来たりしていること，通信速度が？？程度であることを確認してください．
+ダイナミクセルのシャフト角度が左右に周期的に行ったり来たりしていること，通信時間が 100ms 程度であることを確認してください．
+
+<img width="400" src="Figs/output1.png">
 
 > [!WARNING]
 > `Fail to Open port`と表示された場合は，通信ポート番号が間違っているか，USBが抜けた可能性があります．
 > `Success to Open port`と表示されたけどダイナミクセルが動かない場合は，プログラムファイルに書いたダイナミクセルのIDが間違っている可能性があります．また，ダイナミクセルに電源が来ていないかもしれません．
+
+プログラムを止める際は，ターミナルを選択して，Ctr + c とうってください．
 
 ### 制御サンプルプログラムのコンパイルと実行
 いよいよ，ダイナミクセルを制御するためのサンプルプログラムを動かしてみます．
@@ -173,6 +177,305 @@ g++ -o testCtr.exe  main_test_ctrLoop.cpp  serial.cpp  amBasic.cpp  -lstdc++
 ダイナミクセルのシャフトは，９０度の振幅で，２０秒周期で振動することになると思います．
 
 また，以下のような表示が出てくると思います．
+<img width="400" src="Figs/output2.png">
+
+プログラムを止める際は，ターミナルを選択して，Ctr + c とうってください．
+
+## 制御サンプルプログラムの説明
+
+このプログラムを改良してもらえるように，それぞれのコードの中身を説明します．
+ファイルがいっぱいあってわかりにくいと思いますが，重要なファイルは　 main_test_ctrLoop.cpp　のみです．
+
+```main_test_ctrLoop.cpp
+#include <iostream>
+#include "Dynamixel_Mx_simple.hpp"
+
+int main(){
+	double prevTime = 0;
+	int count = 0;
+
+	std::cout << "Start program for checking dynamixel movement" << std::endl;
+	getchar();
+
+	//Set port 
+	Mx28 Dyna((TCHAR*)"\\\\.\\COM4", 1000000);
+	if (Dyna.is_open()) {
+		std::cout << "Success to Open port" << std::endl;
+	}
+	else {
+		std::cout << "Fail to Open port" << std::endl;
+		getchar();
+		return 0;
+	}
+
+	// specify ID
+	int ID = 12;
+
+	// 初期位置にゆっくり移動する
+	Dyna.TurnOnLED(ID, 1);
+	Dyna.SetSpeedRad(ID, 0.4);
+	Dyna.SetGoalRad(ID, 0.);
+
+	// PIDゲインを決める
+	Dyna.SetPID(ID, 4., 0., 0.);
+	am::delay_ms(15000);
+
+	// 最大速度出せるようにする
+	Dyna.SetSpeedRad(ID, 0);
+
+	// sensing 値を格納する箱
+	double s_angle = 0.;
+	double s_omega = 0.;
+	double s_load = 0.;
+	double s_volt = 0.;
+	double s_temp = 0.;
+
+	static int ctrFreq = 100; //  100
+	double omega = am::pi / 10.;
+	double amp = 1. * am::pi / 2.;
+
+	prevTime = am::get_system_time_kon();
+	while (1) {
+		count++;
+		double time = count / (double)ctrFreq;
+		// Command 送る
+		//  安全のため，リミット付きの関数を使って下さい．リミット値入れるのを忘れずに
+		Dyna.SetGoalRad_wLimit(ID, amp * sin(omega * time), -1.6, 1.6);
+
+		// sensing する
+		if (!Dyna.update(ID, s_angle, s_omega, s_load, s_volt, s_temp)) {
+			std::cout << "Fail to update data" << std::endl;
+		}
+
+		if (count % 100 == 1) {
+			std::cout << " Pos : " << s_angle << ", Spd : " << s_omega << std::endl;
+			std::cout << " Load: " << s_load << ", Volt : " << s_volt << ", Tmp : " << s_temp << std::endl;
+		}
+
+		while( am::get_system_time_kon() - prevTime < 1000./ctrFreq){
+			// wait for next command
+		}
+		prevTime = am::get_system_time_kon();
+	}
+
+	return 0;
+}
+```
+
+### プログラムの概要
+
+このプログラムは以下の処理を行います：
+
+* 指定したCOMポートを用いてDynamixelモーターと接続します。
+* モーターの初期位置を設定し、PIDゲインの設定を行います。
+* モーターをサイン波に基づいて時々刻々と動作させます。
+* 位置、速度、負荷、電圧、温度のデータを取得し、出力します。
+
+それぞれ順に内容を説明していきます．
+
+### **ヘッダーファイルとライブラリのインクルード**
+
+```cpp
+#include <iostream>
+#include "Dynamixel_Mx_simple.hpp"
+```
+
+この部分はおまじないと思ってもらっても構いません．やっていることとしては，
+* `#include <iostream>`： 標準の入出力機能を提供するC++ライブラリ。
+* `#include "Dynamixel_Mx_simple.hpp"`： Dynamixelの制御ライブラリをインクルード。Dynamixelとの通信や制御に必要な関数が含まれています。
+  
+
+### **メイン関数と初期変数の設定**
+
+```cpp
+int main(){
+    double prevTime = 0;
+    int count = 0;
+```
+
+`int main(){中身}` でくくられた内部に，プログラムを書きます．これはメイン関数と呼ばれます．
+関数が何かは分かっていなくて大丈夫です．とにかく，この中にプログラムを書くと思ってください．
+
+次に，変数が定義されています．`double` と `int` でデータ型を指定して，その後に変数の名前，初期値が書いてあります．
+`double`型には実数を入れることができ， `int`型には整数を入れることができます．
+
+* `prevTime`： 制御ループを決まった時間間隔で回すために，前回の時間を記録する変数　（単位は ms）
+* `count`： 制御ループの回数をカウントする変数 
 
 
-### 制御サンプルプログラムの説明
+
+### **ユーザー入力とポート設定**
+
+```cpp
+std::cout << "Start program for checking dynamixel movement" << std::endl;
+getchar();
+```
+* `std::cout << "Start program for checking dynamixel movement" << std::endl;` 
+では，<<  << で囲まれた部分をターミナルに表示することができます．
+* `getchar();`
+では，キー入力を待機します。エンターが押されてから次に進むようにしています．
+
+
+```cpp
+Mx28 Dyna((TCHAR*)"\\.\COM4", 1000000);
+```
+ここでは，ダイナミクセル制御用の関数（厳密にはクラス Mx28　Dyna）を使って，通信条件を設定しています．
+* `(TCHAR*)"\\.\COM4"`： 使用するCOMポートを指定
+* `1000000`： 通信のボーレート（速度）を指定
+
+
+### **モーターの初期化とPID設定**
+この部分では，モータを初期位置にゆっくり動かすとともに，モータを制御するゲインの大きさを決定します．
+
+```cpp
+int ID = 12;
+```
+* 制御対象のモーターIDを `12` に設定。
+
+```cpp
+Dyna.TurnOnLED(ID, 1);
+```
+* モーターのLEDを点灯させる関数を読んでいます．
+* `Dyna.TurnOnLED(ID, 0)` と打てば，LEDは消灯します．
+
+> [!NOTE]
+> ここで，関数という概念が出てきました．高校の時に倣った，$z = f(x, y)$ のように，関数ｆに引数を入れて呼び出すことができます．関数ｆは別途定義されていて，引数に合わせて適切な処理をしてくれます．
+> ここでは，引数としてＩＤ，と　１／０（ＯＮ／ＯＦＦ）を引いており，ＩＤのダイナミクセルのＬＥＤをＯＮ/ＯＦＦします．
+
+```cpp
+Dyna.SetSpeedRad(ID, 0.4);
+Dyna.SetGoalRad(ID, 0.);
+```
+ここでも，ダイナミクセル用の関数を使って，初期位置にゆっくり戻るように指令します．
+* `SetSpeedRad(ID, 0.4)`： 速度を0.4ラジアン/秒に設定。
+* `SetGoalRad(ID, 0.)`： モーターに0ラジアンの位置を指令。
+
+```cpp
+Dyna.SetPID(ID, 4., 0., 0.);
+```
+動かすときのＰＩＤゲインを設定します．
+* PIDゲインの設定：
+  * 比例ゲイン (P) = 4.0
+  * 積分ゲイン (I) = 0.0
+  * 微分ゲイン (D) = 0.0
+
+```cpp
+am::delay_ms(15000);
+```
+* 15秒間待機し、モーターが初期位置に到達する時間を確保。
+* １５０００ｍｓは１５秒です．
+
+```cpp
+Dyna.SetSpeedRad(ID, 0);
+```
+* 速度を0に設定し直します．
+* この場合，モーターは最大速度で動作します．
+
+### **センサーデータの初期化**
+
+```cpp
+double s_angle = 0.;
+...
+```
+
+* センサーから取得するデータ用の変数を初期化：
+
+  * `s_angle`： 角度 rad
+  * `s_omega`： 角速度 rad/s
+  * `s_load`： 負荷 %
+  * `s_volt`： 電圧 V
+  * `s_temp`： 温度 deg
+
+
+### **制御パラメータの設定とコマンド送信**
+
+```cpp
+static int ctrFreq = 100;
+...
+```
+
+* `ctrFreq`： 制御ループの周波数を100Hzに設定。
+* `omega`： サイン波の周波数（ラジアン/秒）。
+* `amp`： サイン波の振幅。
+なお，am::pi は，円周率　３．１４１５．．．です．
+
+```cpp
+prevTime = am::get_system_time_kon();
+```
+* 制御ループ開始時刻を取得。
+
+### **制御ループの実行**
+> [!IMPORTANT]
+> この中身が重要な内容になります．
+
+```cpp
+while (1) {
+```
+* この中に書いたものが無限に繰り返されます．
+* 無限ループで，モータへの角度指令を送り続けます．
+
+```cpp
+count++;
+double time = count / (double)ctrFreq;
+```
+* 現在時刻ｔｉｍｅを計算します
+* count が，ループの呼ばれた回数に対応しているので，制御周波数で割ることで時間 time[s]が分かります．
+
+```cpp
+Dyna.SetGoalRad_wLimit(ID, amp * sin(omega * time), -1.6, 1.6);
+```
+* サイン波コマンドを用いて目標角度を設定。
+  *  目標角度 [rad]  ＝　amp [rad] ×　sin　(omega [rad/s] × time [s] )
+* `-1.6` と `1.6` は可動範囲の下限と上限値［ｒａｄ］です
+
+### **データ収集と出力**
+
+```cpp
+if (!Dyna.update(ID, s_angle, s_omega, s_load, s_volt, s_temp)) {
+```
+
+* センサーデータを取得し、更新。
+* 取得に失敗した場合はエラーメッセージを出力。
+
+```cpp
+if (count % 100 == 1) {
+    std::cout << " Pos : " << s_angle << ", Spd : " << s_omega << std::endl;
+}
+```
+
+* 100回に1回の頻度でセンサーデータを出力。
+
+### **制御ループの同期化**
+
+```cpp
+while( am::get_system_time_kon() - prevTime < 1000./ctrFreq){
+```
+
+* ループが一定の周波数で実行されるように時間待ちをしています．1000./ctrFreq　ｍｓ　待っています．
+
+
+### **プログラムの終了**
+
+このプログラムには終了条件が設定されていないため、手動で終了させる必要があります。
+
+---
+
+## やってみよう
+
+**ダイナミクセルの角度が，±４５度の範囲を，周波数２Ｈｚで正弦波で振動するようにプログラムを改良して実行してみてください．**
+
+> [!NOTE]
+> プログラム上で，振幅 amp と角速度 omega の値を適切に変えてみましょう．
+> プログラムを修正したあとは，ファイルを保存して，コンパイルして，実行し直すのを忘れないでください．
+
+> [!TIP]
+> 保存コマンド　Ｃｔｒ＋ｓ
+> コンパイルは，ターミナル上で，
+> ```bash
+> g++ -o testCtr.exe  main_test_ctrLoop.cpp  serial.cpp  amBasic.cpp  -lstdc++
+> ```
+> できた実行ファイル　testCtr.exe　を実行するには，ターミナルだと以下のコマンドを打ってください．
+> ```bash
+> ./testCtr.exe
+> ```
+
