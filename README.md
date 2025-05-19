@@ -69,10 +69,12 @@ https://code.visualstudio.com/docs/cpp/config-mingw
 ### 実行前の準備
 このリポジトリに上がっているプログラム一式をダウンロードして，実行する準備をします．
 まず，このリポジトリ一式をダウンロードします．以下のように，このサイトの右上の緑ボタンを開いて，ZIPファイルでダウンロードするのが簡単です．
+
 <img width="800" src="Figs/git1.png">
 
 そのあと，フォルダを解凍して，codeフォルダの中身をすべて，自分のパソコン内にフォルダを作っておいてください．
 ここでは，写真の例では，SampleDyna　というフォルダ内部にすべてのファイルを置きました．（写真では関係ないファイルも入っていますが，気にしないでください）
+
 <img width="700" src="Figs/folder.png">
 
 次に，プログラムファイルを開いて，自分のPCに合わせた設定をします（通信ポートやダイナミクセルＩＤなど）．
@@ -97,6 +99,7 @@ visual stdio code　を開いて，左上の　ファイルー＞フォルダを
 - ２５行目の　`int ID = ?` の部分で，？に，ダイナミクセルのＩＤ番号を入れてください（シールを張ってます）．　例　`int ID =  12`
 
 これらの修正が出来たら，同様にファイルを上書き保存します．
+
 <img width="700" src="Figs/program2.png">
 
 これで準備は完了です．
@@ -144,7 +147,7 @@ g++ -o testComm.exe  main_test_commSpeed.cpp  serial.cpp  amBasic.cpp  -lstdc++
 ここまでうまくできていれば，以下のような結果が出てくると思います．
 ダイナミクセルのシャフト角度が左右に周期的に行ったり来たりしていること，通信時間が 100ms 程度であることを確認してください．
 
-<img width="400" src="Figs/output1.png">
+<img width="500" src="Figs/output1.png">
 
 > [!WARNING]
 > `Fail to Open port`と表示された場合は，通信ポート番号が間違っているか，USBが抜けた可能性があります．
@@ -177,7 +180,8 @@ g++ -o testCtr.exe  main_test_ctrLoop.cpp  serial.cpp  amBasic.cpp  -lstdc++
 ダイナミクセルのシャフトは，９０度の振幅で，２０秒周期で振動することになると思います．
 
 また，以下のような表示が出てくると思います．
-<img width="400" src="Figs/output2.png">
+
+<img width="500" src="Figs/output2.png">
 
 プログラムを止める際は，ターミナルを選択して，Ctr + c とうってください．
 
